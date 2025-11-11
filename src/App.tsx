@@ -15,10 +15,9 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-/** Supabase — (ideal mover para env vars) */
-const supabaseUrl = 'https://aksoskjfqktbzlqtbovm.supabase.co';
-const supabaseAnonKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrc29za2pmcWt0YnpscXRib3ZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1MjY3MjcsImV4cCI6MjA3ODEwMjcyN30.fEIfmMROhzaW1Y7lOIn45V3qFyzY_H2M-NkyHHgLIIU';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface Produto {
@@ -193,6 +192,16 @@ function DatePicker({
 
 /* ======= Tabela ======= */
 export default function ComissoesTable() {
+
+  function parseDateLocal(isoDate: string): Date {
+    const [y, m, d] = isoDate.split('-').map(Number);
+    return new Date(y, (m ?? 1) - 1, d ?? 1);
+  }
+
+  function formatDateBR(isoDate: string): string {
+    return new Intl.DateTimeFormat('pt-BR').format(parseDateLocal(isoDate));
+  }
+
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,26 +210,28 @@ export default function ComissoesTable() {
   const [dataInicio, setDataInicio] = useState<Date | null>(null);
   const [dataFim, setDataFim] = useState<Date | null>(null);
   const [filtroCodigo, setFiltroCodigo] = useState('');
-
+  
   /** Busca real do Supabase */
   const fetchVendas = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('comissao_vendas')
-        .select(
-          'id,id_venda,contato_nome,dt_venda,comissao_itens,frete,desconto,comissao_final,produtos'
-        )
-        .order('id_venda', { ascending: false });
+  try {
+    setLoading(true);
 
-      if (error) throw error;
-      setVendas((data || []) as unknown as Venda[]);
-    } catch (e) {
-      console.error('Erro ao buscar comissões:', e);
-      alert('Erro ao carregar dados das comissões.');
-    } finally {
-      setLoading(false);
-    }
+    const { data, error } = await supabase
+      .from('comissao_vendas')
+      .select(
+        'id,id_venda,contato_nome,dt_venda,comissao_itens,frete,desconto,comissao_final,produtos,created_at'
+      )
+      .order('created_at', { ascending: false })   // mais novo primeiro
+      .order('id_venda', { ascending: false });    // tie-breaker opcional
+
+    if (error) throw error;
+    setVendas((data || []) as unknown as Venda[]);
+  } catch (e) {
+    console.error('Erro ao buscar comissões:', e);
+    alert('Erro ao carregar dados das comissões.');
+  } finally {
+    setLoading(false);
+  }
   };
 
   useEffect(() => {
@@ -232,8 +243,9 @@ export default function ComissoesTable() {
       const passaCodigo =
         !filtroCodigo.trim() || String(v.id_venda).includes(filtroCodigo.trim());
 
-      const vendaDate = new Date(v.dt_venda);
+      const vendaDate =  parseDateLocal(v.dt_venda);
       vendaDate.setHours(0, 0, 0, 0);
+      console.log(v.dt_venda)
 
       const inicio = dataInicio ? new Date(dataInicio) : null;
       if (inicio) inicio.setHours(0, 0, 0, 0);
@@ -357,7 +369,7 @@ export default function ComissoesTable() {
                   <th className="px-6 py-4 text-left text-sm font-semibold">Cliente</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold">Data Venda</th>
                   <th className="px-6 py-4 text-right text-sm font-semibold">Comissão Itens</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold">Frete</th>
+                  {/* <th className="px-6 py-4 text-right text-sm font-semibold">Frete</th> */}
                   <th className="px-6 py-4 text-right text-sm font-semibold">Desconto</th>
                   <th className="px-6 py-4 text-right text-sm font-semibold">Comissão Final</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold">Detalhes</th>
@@ -382,14 +394,14 @@ export default function ComissoesTable() {
                         <td className="px-6 py-4 font-mono font-semibold text-slate-800">#{venda.id_venda}</td>
                         <td className="px-6 py-4 text-left text-slate-700">{venda.contato_nome || '-'}</td>
                         <td className="px-6 py-4 text-left text-slate-700">
-                          {new Intl.DateTimeFormat('pt-BR').format(new Date(venda.dt_venda))}
+                          {formatDateBR(venda.dt_venda)}
                         </td>
                         <td className="px-6 py-4 text-right text-slate-700 font-medium">
                           {formatCurrency(venda.comissao_itens)}
                         </td>
-                        <td className="px-6 py-4 text-right text-red-600 font-medium">
+                        {/* <td className="px-6 py-4 text-right text-red-600 font-medium">
                           -{formatCurrency(venda.frete)}
-                        </td>
+                        </td> */}
                         <td className="px-6 py-4 text-right text-red-600 font-medium">
                           -{formatCurrency(venda.desconto)}
                         </td>
@@ -475,12 +487,12 @@ export default function ComissoesTable() {
                                       {formatCurrency(venda.comissao_itens)}
                                     </span>
                                   </div>
-                                  <div className="flex justify-between items-center pb-3 border-b border-slate-200">
+                                  {/* <div className="flex justify-between items-center pb-3 border-b border-slate-200">
                                     <span className="text-slate-700">Frete:</span>
                                     <span className="font-semibold text-red-600">
                                       -{formatCurrency(venda.frete)}
                                     </span>
-                                  </div>
+                                  </div> */}
                                   <div className="flex justify-between items-center pb-3 border-b border-slate-200">
                                     <span className="text-slate-700">Desconto da Venda:</span>
                                     <span className="font-semibold text-red-600">
@@ -494,7 +506,7 @@ export default function ComissoesTable() {
                                     </span>
                                   </div>
                                   <div className="text-xs text-slate-500 italic pt-2 text-center">
-                                    Fórmula: Comissão Final = Comissão Itens - Frete - Desconto
+                                    Fórmula: Comissão Final = Comissão Itens - Desconto
                                   </div>
                                 </div>
                               </div>
@@ -523,12 +535,12 @@ export default function ComissoesTable() {
                 <strong>Comissão Itens:</strong> Soma das comissões de todos os produtos da venda
               </span>
             </li>
-            <li className="flex items-start gap-2">
+            {/* <li className="flex items-start gap-2">
               <span className="text-emerald-600 font-bold">•</span>
               <span>
                 <strong>Frete:</strong> Valor do frete que é subtraído da comissão
               </span>
-            </li>
+            </li> */}
             <li className="flex items-start gap-2">
               <span className="text-emerald-600 font-bold">•</span>
               <span>
