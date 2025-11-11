@@ -10,6 +10,7 @@ import {
 
 import { FiltrosCard } from '../components/FiltrosCard';
 import { VendaRow } from '../components/VendaRow';
+import { Paginacao } from '../components/Paginacao';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -77,6 +78,10 @@ export default function ComissoesTable() {
   const [dataFim, setDataFim] = useState<Date | null>(null);
   const [filtroCodigo, setFiltroCodigo] = useState('');
 
+  // Estados de Paginação
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [itensPorPagina, setItensPorPagina] = useState(25);
+
   /** Supabase */
   const fetchVendas = async () => {
     try {
@@ -126,11 +131,33 @@ export default function ComissoesTable() {
     });
   }, [vendas, filtroCodigo, dataInicio, dataFim]);
 
+  // Cálculo da paginação
+  const totalPaginas = Math.ceil(vendasFiltradas.length / itensPorPagina);
+  const indiceInicio = (paginaAtual - 1) * itensPorPagina;
+  const indiceFim = indiceInicio + itensPorPagina;
+  const vendasPaginadas = vendasFiltradas.slice(indiceInicio, indiceFim);
+
   const limparFiltros = () => {
     setDataInicio(null);
     setDataFim(null);
     setFiltroCodigo('');
+    setPaginaAtual(1); // Volta para primeira página ao limpar filtros
   };
+
+  const handlePaginaChange = (novaPagina: number) => {
+    setPaginaAtual(novaPagina);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleItensPorPaginaChange = (novaQuantidade: number) => {
+    setItensPorPagina(novaQuantidade);
+    setPaginaAtual(1); // Volta para primeira página ao mudar itens por página
+  };
+
+  // Resetar para página 1 quando os filtros mudarem
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [filtroCodigo, dataInicio, dataFim]);
 
   const toggleRow = (idVenda: number): void => {
     const newExpanded = new Set(expandedRows);
@@ -182,21 +209,21 @@ export default function ComissoesTable() {
 
         <div className="bg-white rounded-2xl shadow-xl border-0 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[800px]">
               <thead className="bg-gradient-to-r from-slate-800 to-slate-700 text-white">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Venda</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Cliente</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold">Data Venda</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold">Valor da Venda</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold">Valor de Custo</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold">Frete</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold">Comissão Final</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold">Detalhes</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap">Venda</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap">Cliente</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap">Data Venda</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Valor da Venda</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Valor de Custo</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Frete</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Comissão Final</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold whitespace-nowrap">Detalhes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {vendasFiltradas.length === 0 ? (
+                {vendasPaginadas.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                       <Package size={48} className="mx-auto mb-4 text-slate-300" />
@@ -208,7 +235,7 @@ export default function ComissoesTable() {
                     </td>
                   </tr>
                 ) : (
-                  vendasFiltradas.map((venda) => (
+                  vendasPaginadas.map((venda) => (
                     <VendaRow
                       key={venda.id}
                       venda={venda}
@@ -225,6 +252,43 @@ export default function ComissoesTable() {
             </table>
           </div>
         </div>
+
+        {vendasFiltradas.length > 0 && (
+          <>
+            {/* Totalizador */}
+            <div className="mt-6 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-xl shadow-lg p-6 border-2 border-emerald-200">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-emerald-600 rounded-full flex items-center justify-center">
+                    <TrendingUp className="text-white" size={24} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-emerald-700 font-medium">Total de Comissões</p>
+                    <p className="text-xs text-emerald-600">
+                      {vendasFiltradas.length} {vendasFiltradas.length === 1 ? 'venda encontrada' : 'vendas encontradas'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-emerald-700">
+                    {formatCurrency(
+                      vendasFiltradas.reduce((acc, v) => acc + (v.comissao_final ?? 0), 0)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Paginacao
+              paginaAtual={paginaAtual}
+              totalPaginas={totalPaginas}
+              itensPorPagina={itensPorPagina}
+              totalItens={vendasFiltradas.length}
+              onPaginaChange={handlePaginaChange}
+              onItensPorPaginaChange={handleItensPorPaginaChange}
+            />
+          </>
+        )}
 
         <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
           <p className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
