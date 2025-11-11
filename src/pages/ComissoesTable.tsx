@@ -290,7 +290,7 @@ export default function ComissoesTable() {
           </>
         )}
 
-        <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
+        {/* <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
           <p className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
             <span className="w-1 h-6 bg-emerald-500 rounded"></span>
             Legenda
@@ -315,7 +315,7 @@ export default function ComissoesTable() {
               </span>
             </li>
           </ul>
-        </div>
+        </div> */}
       </div>
     </div>
   );
