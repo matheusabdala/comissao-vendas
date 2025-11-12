@@ -35,8 +35,6 @@ interface Venda {
   contato_nome?: string;
 }
 
-// --- Funções de Cálculo (Helpers) ---
-// (Passadas como props para VendaRow)
 
 function calcularValorVenda(venda: Venda): number {
   const totalProdutos =
@@ -53,7 +51,6 @@ function calcularValorCusto(venda: Venda): number {
 }
 
 
-// Componente Principal
 export default function ComissoesTable() {
   
   function parseDateLocal(isoDate: string): Date {
@@ -68,17 +65,14 @@ export default function ComissoesTable() {
   const formatCurrency = (value: number): string =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0);
 
-  // Estados 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Estados dos Filtros
   const [dataInicio, setDataInicio] = useState<Date | null>(null);
   const [dataFim, setDataFim] = useState<Date | null>(null);
   const [filtroCodigo, setFiltroCodigo] = useState('');
 
-  // Estados de Paginação
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [itensPorPagina, setItensPorPagina] = useState(25);
 
@@ -113,7 +107,9 @@ export default function ComissoesTable() {
   const vendasFiltradas = useMemo(() => {
     return vendas.filter((v) => {
       const passaCodigo =
-        !filtroCodigo.trim() || String(v.id_venda).includes(filtroCodigo.trim());
+        !filtroCodigo.trim() || 
+        String(v.id_venda).includes(filtroCodigo.trim()) ||
+        (v.contato_nome && v.contato_nome.toLowerCase().includes(filtroCodigo.trim().toLowerCase()));
 
       const vendaDate =  parseDateLocal(v.dt_venda);
       vendaDate.setHours(0, 0, 0, 0);
@@ -131,7 +127,7 @@ export default function ComissoesTable() {
     });
   }, [vendas, filtroCodigo, dataInicio, dataFim]);
 
-  // Cálculo da paginação
+
   const totalPaginas = Math.ceil(vendasFiltradas.length / itensPorPagina);
   const indiceInicio = (paginaAtual - 1) * itensPorPagina;
   const indiceFim = indiceInicio + itensPorPagina;
@@ -141,7 +137,7 @@ export default function ComissoesTable() {
     setDataInicio(null);
     setDataFim(null);
     setFiltroCodigo('');
-    setPaginaAtual(1); // Volta para primeira página ao limpar filtros
+    setPaginaAtual(1); 
   };
 
   const handlePaginaChange = (novaPagina: number) => {
@@ -151,10 +147,9 @@ export default function ComissoesTable() {
 
   const handleItensPorPaginaChange = (novaQuantidade: number) => {
     setItensPorPagina(novaQuantidade);
-    setPaginaAtual(1); // Volta para primeira página ao mudar itens por página
+    setPaginaAtual(1); 
   };
 
-  // Resetar para página 1 quando os filtros mudarem
   useEffect(() => {
     setPaginaAtual(1);
   }, [filtroCodigo, dataInicio, dataFim]);
@@ -255,7 +250,6 @@ export default function ComissoesTable() {
 
         {vendasFiltradas.length > 0 && (
           <>
-            {/* Totalizador */}
             <div className="mt-6 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-xl shadow-lg p-6 border-2 border-emerald-200">
               <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-3">
@@ -290,7 +284,7 @@ export default function ComissoesTable() {
           </>
         )}
 
-        {/* <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
+        <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
           <p className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
             <span className="w-1 h-6 bg-emerald-500 rounded"></span>
             Legenda
@@ -315,7 +309,7 @@ export default function ComissoesTable() {
               </span>
             </li>
           </ul>
-        </div> */}
+        </div>
       </div>
     </div>
   );
