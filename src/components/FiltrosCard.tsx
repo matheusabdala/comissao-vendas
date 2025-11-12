@@ -56,11 +56,10 @@ export function FiltrosCard({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">Código da Venda</label>
+          <label className="text-sm font-medium text-slate-700">Código ou Cliente</label>
           <input
             type="text"
-            inputMode="numeric"
-            placeholder="Ex.: 12345"
+            placeholder="Ex.: 12345 ou Maria Silva"
             value={filtroCodigo}
             onChange={(e) => onFiltroCodigoChange(e.target.value)}
             className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl hover:border-emerald-300 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-opacity-20 transition-all"
