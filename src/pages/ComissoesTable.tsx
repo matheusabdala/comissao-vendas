@@ -2,11 +2,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
-  Package,    
-  TrendingUp,    
-  Loader2,     
+  Package,
+  TrendingUp,
+  Loader2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
-
 
 import { FiltrosCard } from '../components/FiltrosCard';
 import { VendaRow } from '../components/VendaRow';
@@ -21,6 +23,7 @@ interface Produto {
   codigo: string;
   preco_custo: number;
   preco_venda: number;
+  quantidade?: number; // <-- quantidade agora faz parte do produto
 }
 
 interface Venda {
@@ -35,10 +38,26 @@ interface Venda {
   contato_nome?: string;
 }
 
+function parseDateLocal(isoDate: string): Date {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
 
+function formatDateBR(isoDate: string): string {
+  return new Intl.DateTimeFormat('pt-BR').format(parseDateLocal(isoDate));
+}
+
+const formatCurrency = (value: number): string =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0);
+
+/**
+ * Valor de venda = soma(preço_venda_unitário * quantidade) + frete - desconto
+ */
 function calcularValorVenda(venda: Venda): number {
-  const totalProdutos =
-    (venda.produtos ?? []).reduce((acc, p) => acc + (p.preco_venda ?? 0), 0);
+  const totalProdutos = (venda.produtos ?? []).reduce((acc, p) => {
+    const qtd = p.quantidade ?? 1;
+    return acc + (p.preco_venda ?? 0) * qtd;
+  }, 0);
 
   const frete = venda.frete ?? 0;
   const desconto = venda.desconto ?? 0;
@@ -46,25 +65,17 @@ function calcularValorVenda(venda: Venda): number {
   return totalProdutos + frete - desconto;
 }
 
+/**
+ * Valor de custo = soma(preço_custo_unitário * quantidade)
+ */
 function calcularValorCusto(venda: Venda): number {
-  return (venda.produtos ?? []).reduce((acc, p) => acc + (p.preco_custo ?? 0), 0);
+  return (venda.produtos ?? []).reduce((acc, p) => {
+    const qtd = p.quantidade ?? 1;
+    return acc + (p.preco_custo ?? 0) * qtd;
+  }, 0);
 }
 
-
 export default function ComissoesTable() {
-  
-  function parseDateLocal(isoDate: string): Date {
-    const [y, m, d] = isoDate.split('-').map(Number);
-    return new Date(y, (m ?? 1) - 1, d ?? 1);
-  }
-
-  function formatDateBR(isoDate: string): string {
-    return new Intl.DateTimeFormat('pt-BR').format(parseDateLocal(isoDate));
-  }
-  
-  const formatCurrency = (value: number): string =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0);
-
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +87,10 @@ export default function ComissoesTable() {
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [itensPorPagina, setItensPorPagina] = useState(25);
 
+  type OrdenacaoTipo = 'id_venda' | 'contato_nome' | 'dt_venda' | 'valor_venda' | 'valor_custo' | 'frete' | 'comissao_final';
+  const [ordenarPor, setOrdenarPor] = useState<OrdenacaoTipo>('dt_venda');
+  const [direcaoOrdenacao, setDirecaoOrdenacao] = useState<'asc' | 'desc'>('desc');
+
   /** Supabase */
   const fetchVendas = async () => {
     try {
@@ -86,8 +101,8 @@ export default function ComissoesTable() {
         .select(
           'id,id_venda,contato_nome,dt_venda,comissao_itens,frete,desconto,comissao_final,produtos,created_at'
         )
-        .order('created_at', { ascending: false }) 
-        .order('id_venda', { ascending: false });    
+        .order('created_at', { ascending: false })
+        .order('id_venda', { ascending: false });
 
       if (error) throw error;
       setVendas((data || []) as unknown as Venda[]);
@@ -103,15 +118,15 @@ export default function ComissoesTable() {
     fetchVendas();
   }, []);
 
-
   const vendasFiltradas = useMemo(() => {
     return vendas.filter((v) => {
       const passaCodigo =
-        !filtroCodigo.trim() || 
+        !filtroCodigo.trim() ||
         String(v.id_venda).includes(filtroCodigo.trim()) ||
-        (v.contato_nome && v.contato_nome.toLowerCase().includes(filtroCodigo.trim().toLowerCase()));
+        (v.contato_nome &&
+          v.contato_nome.toLowerCase().includes(filtroCodigo.trim().toLowerCase()));
 
-      const vendaDate =  parseDateLocal(v.dt_venda);
+      const vendaDate = parseDateLocal(v.dt_venda);
       vendaDate.setHours(0, 0, 0, 0);
 
       const inicio = dataInicio ? new Date(dataInicio) : null;
@@ -127,17 +142,64 @@ export default function ComissoesTable() {
     });
   }, [vendas, filtroCodigo, dataInicio, dataFim]);
 
+  const vendasOrdenadas = useMemo(() => {
+    const vendas = [...vendasFiltradas];
+    
+    vendas.sort((a, b) => {
+      let valorA: number | string;
+      let valorB: number | string;
 
-  const totalPaginas = Math.ceil(vendasFiltradas.length / itensPorPagina);
+      switch (ordenarPor) {
+        case 'id_venda':
+          valorA = a.id_venda;
+          valorB = b.id_venda;
+          break;
+        case 'contato_nome':
+          valorA = a.contato_nome?.toLowerCase() || '';
+          valorB = b.contato_nome?.toLowerCase() || '';
+          break;
+        case 'dt_venda':
+          valorA = new Date(a.dt_venda).getTime();
+          valorB = new Date(b.dt_venda).getTime();
+          break;
+        case 'valor_venda':
+          valorA = calcularValorVenda(a);
+          valorB = calcularValorVenda(b);
+          break;
+        case 'valor_custo':
+          valorA = calcularValorCusto(a);
+          valorB = calcularValorCusto(b);
+          break;
+        case 'frete':
+          valorA = a.frete ?? 0;
+          valorB = b.frete ?? 0;
+          break;
+        case 'comissao_final':
+          valorA = a.comissao_final ?? 0;
+          valorB = b.comissao_final ?? 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (valorA < valorB) return direcaoOrdenacao === 'asc' ? -1 : 1;
+      if (valorA > valorB) return direcaoOrdenacao === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return vendas;
+  }, [vendasFiltradas, ordenarPor, direcaoOrdenacao]);
+
+  const totalPaginas = Math.ceil(vendasOrdenadas.length / itensPorPagina);
   const indiceInicio = (paginaAtual - 1) * itensPorPagina;
   const indiceFim = indiceInicio + itensPorPagina;
-  const vendasPaginadas = vendasFiltradas.slice(indiceInicio, indiceFim);
+  const vendasPaginadas = vendasOrdenadas.slice(indiceInicio, indiceFim);
 
   const limparFiltros = () => {
     setDataInicio(null);
     setDataFim(null);
     setFiltroCodigo('');
-    setPaginaAtual(1); 
+    setPaginaAtual(1);
   };
 
   const handlePaginaChange = (novaPagina: number) => {
@@ -147,7 +209,7 @@ export default function ComissoesTable() {
 
   const handleItensPorPaginaChange = (novaQuantidade: number) => {
     setItensPorPagina(novaQuantidade);
-    setPaginaAtual(1); 
+    setPaginaAtual(1);
   };
 
   useEffect(() => {
@@ -158,6 +220,24 @@ export default function ComissoesTable() {
     const newExpanded = new Set(expandedRows);
     newExpanded.has(idVenda) ? newExpanded.delete(idVenda) : newExpanded.add(idVenda);
     setExpandedRows(newExpanded);
+  };
+
+  const handleOrdenar = (coluna: OrdenacaoTipo) => {
+    if (ordenarPor === coluna) {
+      setDirecaoOrdenacao(direcaoOrdenacao === 'asc' ? 'desc' : 'asc');
+    } else {
+      setOrdenarPor(coluna);
+      setDirecaoOrdenacao('asc');
+    }
+  };
+
+  const IconeOrdenacao = ({ coluna }: { coluna: OrdenacaoTipo }) => {
+    if (ordenarPor !== coluna) {
+      return <ArrowUpDown size={16} className="opacity-50" />;
+    }
+    return direcaoOrdenacao === 'asc' 
+      ? <ArrowUp size={16} className="text-emerald-400" />
+      : <ArrowDown size={16} className="text-emerald-400" />;
   };
 
   if (loading) {
@@ -194,7 +274,7 @@ export default function ComissoesTable() {
           dataInicio={dataInicio}
           dataFim={dataFim}
           filtroCodigo={filtroCodigo}
-          vendasFiltradasCount={vendasFiltradas.length}
+          vendasFiltradasCount={vendasOrdenadas.length}
           vendasTotalCount={vendas.length}
           onDataInicioChange={setDataInicio}
           onDataFimChange={setDataFim}
@@ -207,14 +287,72 @@ export default function ComissoesTable() {
             <table className="w-full min-w-[800px]">
               <thead className="bg-gradient-to-r from-slate-800 to-slate-700 text-white">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap">Venda</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap">Cliente</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap">Data Venda</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Valor da Venda</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Valor de Custo</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Frete</th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap">Comissão Final</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold whitespace-nowrap">Detalhes</th>
+                  <th 
+                    onClick={() => handleOrdenar('id_venda')}
+                    className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      Venda
+                      <IconeOrdenacao coluna="id_venda" />
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleOrdenar('contato_nome')}
+                    className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      Cliente
+                      <IconeOrdenacao coluna="contato_nome" />
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleOrdenar('dt_venda')}
+                    className="px-6 py-4 text-left text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      Data Venda
+                      <IconeOrdenacao coluna="dt_venda" />
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleOrdenar('valor_venda')}
+                    className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Valor da Venda
+                      <IconeOrdenacao coluna="valor_venda" />
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleOrdenar('valor_custo')}
+                    className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Valor de Custo
+                      <IconeOrdenacao coluna="valor_custo" />
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleOrdenar('frete')}
+                    className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Frete
+                      <IconeOrdenacao coluna="frete" />
+                    </div>
+                  </th>
+                  <th 
+                    onClick={() => handleOrdenar('comissao_final')}
+                    className="px-6 py-4 text-right text-sm font-semibold whitespace-nowrap cursor-pointer hover:bg-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Comissão Final
+                      <IconeOrdenacao coluna="comissao_final" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold whitespace-nowrap">
+                    Detalhes
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -248,25 +386,57 @@ export default function ComissoesTable() {
           </div>
         </div>
 
-        {vendasFiltradas.length > 0 && (
+        {vendasOrdenadas.length > 0 && (
           <>
             <div className="mt-6 bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-xl shadow-lg p-6 border-2 border-emerald-200">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-emerald-600 rounded-full flex items-center justify-center">
-                    <TrendingUp className="text-white" size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-emerald-700 font-medium">Total de Comissões</p>
-                    <p className="text-xs text-emerald-600">
-                      {vendasFiltradas.length} {vendasFiltradas.length === 1 ? 'venda encontrada' : 'vendas encontradas'}
-                    </p>
-                  </div>
+              <div className="mb-4 flex items-center gap-3">
+                <div className="w-12 h-12 bg-emerald-600 rounded-full flex items-center justify-center">
+                  <TrendingUp className="text-white" size={24} />
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold text-emerald-700">
+                <div>
+                  <p className="text-lg text-emerald-800 font-bold">Totalizadores</p>
+                  <p className="text-xs text-emerald-600">
+                    {vendasOrdenadas.length}{' '}
+                    {vendasOrdenadas.length === 1
+                      ? 'venda encontrada'
+                      : 'vendas encontradas'}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-lg p-4 shadow-sm">
+                  <p className="text-xs text-slate-600 mb-1">Valor de Vendas</p>
+                  <p className="text-lg font-bold text-slate-800">
                     {formatCurrency(
-                      vendasFiltradas.reduce((acc, v) => acc + (v.comissao_final ?? 0), 0)
+                      vendasOrdenadas.reduce((acc, v) => acc + calcularValorVenda(v), 0)
+                    )}
+                  </p>
+                </div>
+                
+                <div className="bg-white rounded-lg p-4 shadow-sm">
+                  <p className="text-xs text-slate-600 mb-1">Valor de Custo</p>
+                  <p className="text-lg font-bold text-slate-800">
+                    {formatCurrency(
+                      vendasOrdenadas.reduce((acc, v) => acc + calcularValorCusto(v), 0)
+                    )}
+                  </p>
+                </div>
+                
+                <div className="bg-white rounded-lg p-4 shadow-sm">
+                  <p className="text-xs text-slate-600 mb-1">Total de Frete</p>
+                  <p className="text-lg font-bold text-slate-800">
+                    {formatCurrency(
+                      vendasOrdenadas.reduce((acc, v) => acc + (v.frete ?? 0), 0)
+                    )}
+                  </p>
+                </div>
+                
+                <div className="bg-emerald-600 rounded-lg p-4 shadow-md">
+                  <p className="text-xs text-emerald-100 mb-1">Comissão Final</p>
+                  <p className="text-2xl font-bold text-white">
+                    {formatCurrency(
+                      vendasOrdenadas.reduce((acc, v) => acc + (v.comissao_final ?? 0), 0)
                     )}
                   </p>
                 </div>
@@ -277,7 +447,7 @@ export default function ComissoesTable() {
               paginaAtual={paginaAtual}
               totalPaginas={totalPaginas}
               itensPorPagina={itensPorPagina}
-              totalItens={vendasFiltradas.length}
+              totalItens={vendasOrdenadas.length}
               onPaginaChange={handlePaginaChange}
               onItensPorPaginaChange={handleItensPorPaginaChange}
             />
@@ -293,7 +463,8 @@ export default function ComissoesTable() {
             <li className="flex items-start gap-2">
               <span className="text-emerald-600 font-bold">•</span>
               <span>
-                <strong>Comissão Itens:</strong> Soma das comissões de todos os produtos da venda
+                <strong>Comissão Itens:</strong> Soma das comissões de todos os
+                produtos da venda (já considerando quantidade)
               </span>
             </li>
             <li className="flex items-start gap-2">
@@ -305,7 +476,7 @@ export default function ComissoesTable() {
             <li className="flex items-start gap-2">
               <span className="text-emerald-600 font-bold">•</span>
               <span>
-                <strong>Comissão Final:</strong> Comissão Itens - Frete - Desconto
+                <strong>Comissão Final:</strong> Comissão Itens - Desconto
               </span>
             </li>
           </ul>
