@@ -95,17 +95,36 @@ export default function ComissoesTable() {
   const fetchVendas = async () => {
     try {
       setLoading(true);
+      
+      let allData: Venda[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      const { data, error } = await supabase
-        .from('comissao_vendas')
-        .select(
-          'id,id_venda,contato_nome,dt_venda,comissao_itens,frete,desconto,comissao_final,produtos,created_at'
-        )
-        .order('created_at', { ascending: false })
-        .order('id_venda', { ascending: false });
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('comissao_vendas')
+          .select(
+            'id,id_venda,contato_nome,dt_venda,comissao_itens,frete,desconto,comissao_final,produtos,created_at'
+          )
+          .order('created_at', { ascending: false })
+          .order('id_venda', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      if (error) throw error;
-      setVendas((data || []) as unknown as Venda[]);
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allData = [...allData, ...(data as unknown as Venda[])];
+          page++;
+          hasMore = data.length === pageSize;
+          console.log(`Carregando página ${page}... Total até agora: ${allData.length} registros`);
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setVendas(allData);
+      console.log(`✅ Carregamento concluído! Total de ${allData.length} registros`);
     } catch (e) {
       console.error('Erro ao buscar comissões:', e);
       alert('Erro ao carregar dados das comissões.');
